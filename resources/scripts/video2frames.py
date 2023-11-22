@@ -21,8 +21,8 @@ if __name__ == "__main__":
                     prog='Video2frames',
                     description='Creates frames from video',
                     epilog='V1.0')
-    parser.add_argument('-v', '--video', help='Full path to video')
-    parser.add_argument('-d', '--destination', help='Directory to generate frames into')
-    args = parser.parse_args()
+    parser.add_argument('-v', '--video', help='Full path to video', required=True)
+    parser.add_argument('-d', '--destination', help='Directory to generate frames into', required=True)
+    args = vars(parser.parse_args())
 
-    createFrames(args['video'], args['destination'], args['stride'])
+    createFrames(args['video'], args['destination'])
