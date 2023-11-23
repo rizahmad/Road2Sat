@@ -49,14 +49,14 @@ def selectedPointsHomography():
 
     # Estimate the homography matrix
     homography, _ = cv2.findHomography(roadPoints, satellitePoints, cv2.RANSAC, 5.0)
-    
+    print(homography)
+
     # Serialization and saving
     numpyData = {"homography": homography}
     encodedNumpyData = json.dumps(numpyData, cls=NumpyArrayEncoder, indent=4)
     f = open(os.path.join(genPath, "road2sat_homography.json"), "w")
     f.write(encodedNumpyData)
     f.close()
-    
 
 if __name__ == "__main__":
     selectedPointsHomography()

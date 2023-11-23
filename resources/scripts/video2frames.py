@@ -13,11 +13,11 @@ def createFrames(videoPath, width):
     count = 1
     while success:
         resizedImage = imutils.resize(image, width)
-        cv2.imwrite(os.path.join(destinationPath, "frame_%d.jpg" % count), resizedImage) 
+        cv2.imwrite(os.path.join(destinationPath, "frame_%09d.jpg" % count), resizedImage) 
 
         success,image = vidcap.read()
         if success:
-            print("frame_%d.jpg generated" % count)
+            print("frame_%09d.jpg generated" % count)
         count += 1
 
 if __name__ == "__main__":

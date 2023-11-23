@@ -7,58 +7,78 @@ import os
 import imutils
 import argparse
 from datetime import datetime
+import json
+import glob
+from resources.scripts.NumpyArrayEncoder import NumpyArrayEncoder
 
-# Load the images
+def getCorrespondingPoints(srcPath, dstPath):
+    # Load the images
+    image1 = cv2.imread(srcPath)
+    image2 = cv2.imread(dstPath)
 
-#rootPath = 'D:\mscs_lums\dev\mscs_cv\programming_assignments\PA3\project_files'
+    # Convert images to grayscale
+    gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-# satelliteImage = imutils.resize(cv2.imread(os.path.join(rootPath, 'satelliteImage1.jpg')), width = 600)
-# roadImage = imutils.resize(cv2.imread(os.path.join(rootPath, 'roadImage1.jpg')), width = 600)
+    # Initialize the feature detector and extractor (e.g., SIFT)
+    sift = cv2.SIFT_create()
 
-pointsInput = []
+    # Detect keypoints and compute descriptors for both images
+    keypoints1, descriptors1 = sift.detectAndCompute(gray1, None)
+    keypoints2, descriptors2 = sift.detectAndCompute(gray2, None)
 
-def onClickCallback(event, x, y, p1, p2):
-    if event == cv2.EVENT_LBUTTONDOWN:
-        pointsInput.append([x, y])
+    # Initialize the feature matcher using brute-force matching
+    bf = cv2.BFMatcher()
 
-def point_reader(img):
-    '''
-    img - The image to be marked points on
-    '''
-    pointsInput.clear()
-    cv2.imshow('point_reader', img)
-    cv2.setMouseCallback('point_reader', onClickCallback)
-    cv2.waitKey(0)
+    # Match the descriptors using brute-force matching
+    matches = bf.match(descriptors1, descriptors2)
 
-def roadHomography(roadImagePath, satelliteImagePath, rootPath):
+    # Select the top N matches
+    num_matches = 50
+    matches = sorted(matches, key=lambda x: x.distance)[:num_matches]
 
-    roadImage = imutils.resize(cv2.imread(os.path.join(roadImagePath)), width = 600)
-    satelliteImage = imutils.resize(cv2.imread(os.path.join(satelliteImagePath)), width = 600)
-    
-    point_reader(roadImage)
-    roadPoints = np.array(pointsInput)
-    print(roadPoints)
-    point_reader(satelliteImage)
-    satellitePoints = np.array(pointsInput)
-    print(satellitePoints)
+    # Extract matching keypoints
+    src_points = np.float32([keypoints1[match.queryIdx].pt for match in matches]).reshape(-1, 1, 2)
+    dst_points = np.float32([keypoints2[match.trainIdx].pt for match in matches]).reshape(-1, 1, 2)
 
-    # Estimate the homography matrix
-    homography, _ = cv2.findHomography(roadPoints, satellitePoints, cv2.RANSAC, 5.0)
+    return src_points, dst_points
 
-    # Warp the first image using the homography
-    result = cv2.warpPerspective(roadImage, homography, (2*roadImage.shape[1], 2*roadImage.shape[0]))
-    outFilename = 'homography_'+roadImagePath.split('\\')[-1].split('.')[0]+'_'+satelliteImagePath.split('\\')[-1].split('.')[0]+'_'+datetime.now().strftime("%H-%M-%S")+'.jpg'
-    print('File '+outFilename+' written')
-    cv2.imwrite(os.path.join(rootPath, outFilename), result)
+def roadHomography():
+    genPath = '.\\gen'
+    datasetPath = ".\\dataset\\frames"
+
+    f = open(os.path.join(genPath, "road2sat_homography.json"), "r")
+    encodedNumpyData =f.read()
+    f.close()
+    decodedArrays = json.loads(encodedNumpyData)
+    finalNumpyArray = np.asarray(decodedArrays["homography"])
+    homography = finalNumpyArray
+    print(homography)
+
+    # read all frames
+    # loop over and get corresponding points and calculate homography
+    framePaths = glob.glob(os.path.join(datasetPath, '*'))
+    framePaths.sort()
+
+    frameHomography = list()
+    runningHomography = homography
+    for i, _ in enumerate(framePaths):
+        frameName = framePaths[i].split('\\')[-1]
+        if i == 0:
+            frameHomography.append({frameName:runningHomography})
+        else:
+            srcPoints, dstPpoints = getCorrespondingPoints(framePaths[i], framePaths[i-1])
+            h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
+            runningHomography = np.matmul(runningHomography, h)
+            frameHomography.append({frameName:runningHomography})
+
+    # Serialization and saving
+    encodedNumpyData = json.dumps(frameHomography, cls=NumpyArrayEncoder, indent=4)
+    f = open(os.path.join(genPath, "interframes_homography.json"), "w")
+    f.write(encodedNumpyData)
+    f.close()
 
 def main():
-    currentWorkingDirectory = os.getcwd()
-    parser = argparse.ArgumentParser(description='Road Homography calculator')
-    parser.add_argument('-r','--roadImage', help='road image path', required=True)
-    parser.add_argument('-s','--satelliteImage', help='satellite image path', required=True)
-    args = vars(parser.parse_args())
-
-    roadHomography(args['roadImage'], args['satelliteImage'], currentWorkingDirectory)
-    
+    roadHomography()
 
 main()
