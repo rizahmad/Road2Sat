@@ -58,7 +58,7 @@ class Road2Sat:
         return src_points, dst_points
 
     def CalculateInterFrameHomography(self):
-        f = open(os.path.join(self.genPath, self.road2SatHomographyFilename), "r")
+        f = open(os.path.join(self.genFolder, self.road2SatHomographyFilename), "r")
         encodedNumpyData =f.read()
         f.close()
         decodedArrays = json.loads(encodedNumpyData)
@@ -78,14 +78,14 @@ class Road2Sat:
             if i == 0:
                 interframeHomography.append({frameName:runningHomography})
             else:
-                srcPoints, dstPpoints = self.CalculateCorrespondingPoints(framePaths[i], framePaths[i-1])
+                srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1])
                 h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
                 runningHomography = np.matmul(runningHomography, h)
                 interframeHomography.append({frameName:runningHomography})
 
         # Serialization and saving
         encodedNumpyData = json.dumps(interframeHomography, cls=NumpyArrayEncoder, indent=4)
-        f = open(os.path.join(self.genPath, self.interframesHomographyFilename), "w")
+        f = open(os.path.join(self.genFolder, self.interframesHomographyFilename), "w")
         f.write(encodedNumpyData)
         f.close()
 
@@ -115,7 +115,7 @@ class Road2Sat:
         for i, p in enumerate(framePaths):
             img = cv2.imread(p)
             frameName = frameName = p.split('\\')[-1]
-            h = self.interframeHomography[i]
+            h = list(self.interframeHomography[i].values())[0]
             result = cv2.warpPerspective(img, h, (img.shape[1], img.shape[0]))
             cv2.imwrite(os.path.join(self.p_framesPath, 'p_'+frameName), result)
         
@@ -127,4 +127,3 @@ class Road2Sat:
 if __name__ == "__main__":
     r2s = Road2Sat()
     r2s.CalculateInterFrameHomography().CreateProjectedFrames()
-    
