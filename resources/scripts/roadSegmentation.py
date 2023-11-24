@@ -24,18 +24,15 @@ import numpy as np
 import torchvision.transforms as transforms
 import PIL.Image as image
 
-sys.path.insert(0, '.\YOLOP')
-
-
-from lib.config import cfg
-from lib.config import update_config
-from lib.utils.utils import create_logger, select_device, time_synchronized
-from lib.models import get_net
-from lib.dataset import LoadImages, LoadStreams
-from lib.core.general import non_max_suppression, scale_coords
-from lib.utils import plot_one_box,show_seg_result
-from lib.core.function import AverageMeter
-from lib.core.postprocess import morphological_process, connect_lane
+from models.YOLOP.lib.config import cfg
+from models.YOLOP.lib.config import update_config
+from models.YOLOP.lib.utils.utils import create_logger, select_device, time_synchronized
+from models.YOLOP.lib.models import get_net
+from models.YOLOP.lib.dataset import LoadImages, LoadStreams
+from models.YOLOP.lib.core.general import non_max_suppression, scale_coords
+from models.YOLOP.lib.utils import plot_one_box,show_seg_result
+from models.YOLOP.lib.core.function import AverageMeter
+from models.YOLOP.lib.core.postprocess import morphological_process, connect_lane
 
 import torch
 from torchvision import transforms
