@@ -2,12 +2,15 @@ import cv2
 import os
 import argparse
 import imutils
+import shutil
 
 
 def createFrames(videoPath, width, stride):
     destinationPath = '.\\dataset\\frames'
-    if not os.path.exists(destinationPath):
-        os.makedirs(destinationPath)
+    if os.path.exists(destinationPath):
+         shutil.rmtree(destinationPath)
+    os.makedirs(destinationPath)
+    
     vidcap = cv2.VideoCapture(videoPath)
     success,image = vidcap.read()
     count = 1
