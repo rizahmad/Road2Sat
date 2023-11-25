@@ -15,19 +15,22 @@ from resources.scripts.roadSegmentation import roadSegmentation
 
 class Road2Sat:
     def __init__(self):
-        self.genFolder = '.\\gen'
+        # Dataset files
         self.datasetFolder = '.\\dataset'
         self.framesPath = os.path.join(self.datasetFolder, 'frames')
         self.roadrefPath = os.path.join(self.datasetFolder, 'roadref')
         self.satrefPath = os.path.join(self.datasetFolder, 'satref')
+        self.rs_framesPath = os.path.join(self.datasetFolder, 'rs_frames')
+        
+        # Generated files
+        self.genFolder = '.\\gen'
         self.p_framesPath = os.path.join(self.genFolder, 'p_frames')
-        self.rs_framesPath = os.path.join(self.genFolder, 'rs_frames')
         self.road2SatHomographyFilename = "road2sat_homography.json"
         self.interframesHomographyFilename = "interframes_homography.json"
 
+        # Create gen folder directories if they do not exist
         if not os.path.exists(self.p_framesPath):
             os.makedirs(self.p_framesPath)
-
         if not os.path.exists(self.rs_framesPath):
             os.makedirs(self.rs_framesPath)
 
@@ -98,15 +101,6 @@ class Road2Sat:
         self.interframeHomography = interframeHomography
 
         return self
-
-    def CreateRoadSegmentedFrames(self):
-        framePaths = glob.glob(os.path.join(self.framesPath, '*'))
-        framePaths.sort()
-        for p in framePaths:
-            segmentedImage = roadSegmentation(p)
-            frameName = p.split('\\')[-1]
-            cv2.imwrite(os.path.join(self.rs_framesPath, 'rs_'+frameName), segmentedImage)
-        return self
         
     def CreateProjectedFrames(self, roadSegmented=False):
         srcImagesPath = ''
@@ -137,8 +131,5 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     r2s = Road2Sat()
-    if args['roadsegmentation']:
-        r2s.CalculateInterFrameHomography().CreateRoadSegmentedFrames().CreateProjectedFrames(roadSegmented=True)
-    else:
-        r2s.CalculateInterFrameHomography().CreateProjectedFrames(roadSegmented=False)
+    r2s.CalculateInterFrameHomography().CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
         
