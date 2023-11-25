@@ -9,9 +9,9 @@ import argparse
 from datetime import datetime
 import json
 import glob
+
 from resources.scripts.NumpyArrayEncoder import NumpyArrayEncoder
 from resources.scripts.roadSegmentation import roadSegmentation
-
 
 class Road2Sat:
     def __init__(self):
@@ -24,6 +24,12 @@ class Road2Sat:
         self.rs_framesPath = os.path.join(self.genFolder, 'rs_frames')
         self.road2SatHomographyFilename = "road2sat_homography.json"
         self.interframesHomographyFilename = "interframes_homography.json"
+
+        if not os.path.exists(self.p_framesPath):
+            os.makedirs(self.p_framesPath)
+
+        if not os.path.exists(self.rs_framesPath):
+            os.makedirs(self.rs_framesPath)
 
     def calculateCorrespondingPoints(self, srcPath, dstPath):
         # Load the images
@@ -64,7 +70,7 @@ class Road2Sat:
         decodedArrays = json.loads(encodedNumpyData)
         finalNumpyArray = np.asarray(decodedArrays["homography"])
         homography = finalNumpyArray
-        print(homography)
+        print('Road to Satellite view homography:\n',homography)
 
         # read all frames
         # loop over and get corresponding points and calculate homography
@@ -96,8 +102,6 @@ class Road2Sat:
     def CreateRoadSegmentedFrames(self):
         framePaths = glob.glob(os.path.join(self.framesPath, '*'))
         framePaths.sort()
-        if not os.path.exists(self.rs_framesPath):
-            os.makedirs(self.rs_framesPath)
         for p in framePaths:
             segmentedImage = roadSegmentation(p)
             frameName = p.split('\\')[-1]
@@ -125,5 +129,16 @@ class Road2Sat:
         pass
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+                    prog='Road2Sat',
+                    description='Creates a mosaic from dash cam images',
+                    epilog='V1.0')
+    parser.add_argument('-rs', '--roadsegmentation', action='store_true')
+    args = vars(parser.parse_args())
+
     r2s = Road2Sat()
-    r2s.CalculateInterFrameHomography().CreateProjectedFrames()
+    if args['roadsegmentation']:
+        r2s.CalculateInterFrameHomography().CreateRoadSegmentedFrames().CreateProjectedFrames(roadSegmented=True)
+    else:
+        r2s.CalculateInterFrameHomography().CreateProjectedFrames(roadSegmented=False)
+        

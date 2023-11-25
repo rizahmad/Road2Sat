@@ -24,15 +24,19 @@ import numpy as np
 import torchvision.transforms as transforms
 import PIL.Image as image
 
-from models.YOLOP.lib.config import cfg
-from models.YOLOP.lib.config import update_config
-from models.YOLOP.lib.utils.utils import create_logger, select_device, time_synchronized
-from models.YOLOP.lib.models import get_net
-from models.YOLOP.lib.dataset import LoadImages, LoadStreams
-from models.YOLOP.lib.core.general import non_max_suppression, scale_coords
-from models.YOLOP.lib.utils import plot_one_box,show_seg_result
-from models.YOLOP.lib.core.function import AverageMeter
-from models.YOLOP.lib.core.postprocess import morphological_process, connect_lane
+# https://stackoverflow.com/questions/21259070/struggling-to-append-a-relative-path-to-my-sys-path
+# https://stackoverflow.com/questions/4934806/how-can-i-find-scripts-directory
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),'..\models', 'YOLOP'))
+
+from lib.config import cfg
+from lib.config import update_config
+from lib.utils.utils import create_logger, select_device, time_synchronized
+from lib.models import get_net
+from lib.dataset import LoadImages, LoadStreams
+from lib.core.general import non_max_suppression, scale_coords
+from lib.utils import plot_one_box,show_seg_result
+from lib.core.function import AverageMeter
+from lib.core.postprocess import morphological_process, connect_lane
 
 import torch
 from torchvision import transforms
@@ -63,8 +67,7 @@ def roadSegmentation(imagePath, modelChoice=1):
 
 
     model = get_net(cfg)
-    
-    checkpoint = torch.load("YOLOP\weights\End-to-end.pth", map_location= device)
+    checkpoint = torch.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),'..\models', 'YOLOP', 'weights', 'End-to-end.pth'), map_location= device)
     model.load_state_dict(checkpoint['state_dict'])
     model = model.to(device)
     if half:
@@ -88,7 +91,6 @@ def roadSegmentation(imagePath, modelChoice=1):
     det_out, da_seg_out, ll_seg_out = model(img)
 
     # Process the segmentation outputs
-    print(len(det_out))
     inf_out, _ , _ = det_out
     det_pred = non_max_suppression(inf_out, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False)
     det = det_pred[0]
@@ -147,6 +149,7 @@ if __name__ == "__main__":
                     epilog='V1.0')
     parser.add_argument('-i', '--input', help='Input frame path', required = True)
     parser.add_argument('-m', '--model', help='Model selection', required = False)
-    args = parser.parse_args()
+    args = vars(parser.parse_args())
 
-    roadSegmentation(args.input, modelChoice = 1)
+    imgName = 'rs_'+args['input'].split('\\')[-1]
+    cv2.imwrite(imgName, roadSegmentation(args['input'], modelChoice = 1))
