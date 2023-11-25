@@ -9,9 +9,9 @@ import argparse
 from datetime import datetime
 import json
 import glob
+import shutil
 
 from resources.scripts.NumpyArrayEncoder import NumpyArrayEncoder
-from resources.scripts.roadSegmentation import roadSegmentation
 
 class Road2Sat:
     def __init__(self):
@@ -29,10 +29,9 @@ class Road2Sat:
         self.interframesHomographyFilename = "interframes_homography.json"
 
         # Create gen folder directories if they do not exist
-        if not os.path.exists(self.p_framesPath):
-            os.makedirs(self.p_framesPath)
-        if not os.path.exists(self.rs_framesPath):
-            os.makedirs(self.rs_framesPath)
+        if os.path.exists(self.p_framesPath):
+            shutil.rmtree(self.p_framesPath)
+        os.makedirs(self.p_framesPath)
 
     def calculateCorrespondingPoints(self, srcPath, dstPath):
         # Load the images
@@ -73,30 +72,46 @@ class Road2Sat:
         decodedArrays = json.loads(encodedNumpyData)
         finalNumpyArray = np.asarray(decodedArrays["homography"])
         homography = finalNumpyArray
-        print('Road to Satellite view homography:\n',homography)
-
-        # read all frames
-        # loop over and get corresponding points and calculate homography
-        framePaths = glob.glob(os.path.join(self.framesPath, '*'))
-        framePaths.sort()
+        print('Road to Satellite view homography loaded')
 
         interframeHomography = list()
         runningHomography = homography
-        for i, _ in enumerate(framePaths):
-            frameName = framePaths[i].split('\\')[-1]
-            if i == 0:
-                interframeHomography.append({frameName:runningHomography})
-            else:
-                srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1])
-                h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
-                runningHomography = np.matmul(runningHomography, h)
-                interframeHomography.append({frameName:runningHomography})
+        
+        if os.path.isfile(os.path.join(self.genFolder, self.interframesHomographyFilename)):
+            # File exits, load it
+            print(self.interframesHomographyFilename, 'was found, loading contents')
+            f = open(os.path.join(self.genFolder, self.interframesHomographyFilename), "r")
+            encodedNumpyData =f.read()
+            f.close()
+            homographyList = json.loads(encodedNumpyData)
+            finalNumpyArray = np.asarray(decodedArrays["homography"])
 
-        # Serialization and saving
-        encodedNumpyData = json.dumps(interframeHomography, cls=NumpyArrayEncoder, indent=4)
-        f = open(os.path.join(self.genFolder, self.interframesHomographyFilename), "w")
-        f.write(encodedNumpyData)
-        f.close()
+            for h in homographyList:
+                k, v = list(h.items())[0]
+                interframeHomography.append({k:np.asarray(v)})
+            
+        else:
+            # File does not exist, calculation needed
+            # read all frames
+            # loop over and get corresponding points and calculate homography
+            print(self.interframesHomographyFilename, 'was not found, calculating')
+            framePaths = glob.glob(os.path.join(self.framesPath, '*'))
+            framePaths.sort()
+            for i, _ in enumerate(framePaths):
+                frameName = framePaths[i].split('\\')[-1]
+                if i == 0:
+                    interframeHomography.append({frameName:runningHomography})
+                else:
+                    srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1])
+                    h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
+                    runningHomography = np.matmul(runningHomography, h)
+                    interframeHomography.append({frameName:runningHomography})
+
+            # Serialization and saving
+            encodedNumpyData = json.dumps(interframeHomography, cls=NumpyArrayEncoder, indent=4)
+            f = open(os.path.join(self.genFolder, self.interframesHomographyFilename), "w")
+            f.write(encodedNumpyData)
+            f.close()
 
         self.interframeHomography = interframeHomography
 
@@ -109,6 +124,7 @@ class Road2Sat:
         else:
             srcImagesPath = self.framesPath
         
+        print('Generating projections for images in', srcImagesPath)
         framePaths = glob.glob(os.path.join(srcImagesPath, '*'))
         for i, p in enumerate(framePaths):
             img = cv2.imread(p)
@@ -127,7 +143,7 @@ if __name__ == "__main__":
                     prog='Road2Sat',
                     description='Creates a mosaic from dash cam images',
                     epilog='V1.0')
-    parser.add_argument('-rs', '--roadsegmentation', action='store_true')
+    parser.add_argument('-rs', '--roadsegmentation', action='store_true', required=False)
     args = vars(parser.parse_args())
 
     r2s = Road2Sat()

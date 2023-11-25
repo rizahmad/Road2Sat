@@ -46,7 +46,9 @@ from glob import glob
 
 # import evaluate
 
-def roadSegmentation(imagePath, modelChoice=1):
+
+
+def yolopRoadSegmention(imagePath):
     # @Faizan make any changes needed. You can download model weights in ../model/
     source = imagePath
     original_image =  cv2.imread(source)
@@ -142,14 +144,28 @@ def roadSegmentation(imagePath, modelChoice=1):
 
     return result_image
 
+def createRoadSegmentedFrames(framesPath, rs_framesPath, model=1):
+        framePaths = glob(os.path.join(framesPath, '*'))
+        framePaths.sort()
+        if model == 1:
+            rsAlgo = yolopRoadSegmention
+        for p in framePaths:
+            segmentedImage = rsAlgo(p)
+            frameName = p.split('\\')[-1]
+            cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+frameName), segmentedImage)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
                     prog='roadSegmentation',
                     description='Segment road from dash cam view',
                     epilog='V1.0')
-    parser.add_argument('-i', '--input', help='Input frame path', required = True)
     parser.add_argument('-m', '--model', help='Model selection', required = False)
     args = vars(parser.parse_args())
+    
+    source = '.\\dataset\\frames'
+    destination = '.\\dataset\\rs_frames'
+    if not os.path.exists(destination):
+        os.makedirs(destination)
 
-    imgName = 'rs_'+args['input'].split('\\')[-1]
-    cv2.imwrite(imgName, roadSegmentation(args['input'], modelChoice = 1))
+    createRoadSegmentedFrames(source, destination, model=1)
+
