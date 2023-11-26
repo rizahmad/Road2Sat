@@ -15,7 +15,7 @@ import sys
 
 from resources.scripts.NumpyArrayEncoder import NumpyArrayEncoder
 
-sys.path.append(os.path.join('.\\resources','models', 'superglue'))
+sys.path.append(os.path.join('.\\resources','models', 'Stitch-images-using-SuperGlue-GNN'))
 from models.matching import Matching
 from models.utils import (compute_pose_error, compute_epipolar_error,
                           estimate_pose, make_matching_plot,
