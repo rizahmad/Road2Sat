@@ -10,8 +10,18 @@ from datetime import datetime
 import json
 import glob
 import shutil
+import torch
+import sys
 
 from resources.scripts.NumpyArrayEncoder import NumpyArrayEncoder
+
+sys.path.append(os.path.join('.\\resources','models', 'superglue'))
+from models.matching import Matching
+from models.utils import (compute_pose_error, compute_epipolar_error,
+                          estimate_pose, make_matching_plot,
+                          error_colormap, AverageTimer, pose_auc, read_image,
+                          rotate_intrinsics, rotate_pose_inplane,
+                          scale_intrinsics)
 
 class Road2Sat:
     def __init__(self):
@@ -33,7 +43,7 @@ class Road2Sat:
             shutil.rmtree(self.p_framesPath)
         os.makedirs(self.p_framesPath)
 
-    def calculateCorrespondingPoints(self, srcPath, dstPath):
+    def calculateCorrespondingPoints(self, srcPath, dstPath, model = 2):
         # Load the images
         image1 = cv2.imread(srcPath)
         image2 = cv2.imread(dstPath)
@@ -42,26 +52,60 @@ class Road2Sat:
         gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
         gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-        # Initialize the feature detector and extractor (e.g., SIFT)
-        sift = cv2.SIFT_create()
+        if model == 1:
 
-        # Detect keypoints and compute descriptors for both images
-        keypoints1, descriptors1 = sift.detectAndCompute(gray1, None)
-        keypoints2, descriptors2 = sift.detectAndCompute(gray2, None)
+            # Initialize the feature detector and extractor (e.g., SIFT)
+            sift = cv2.SIFT_create()
 
-        # Initialize the feature matcher using brute-force matching
-        bf = cv2.BFMatcher()
+            # Detect keypoints and compute descriptors for both images
+            keypoints1, descriptors1 = sift.detectAndCompute(gray1, None)
+            keypoints2, descriptors2 = sift.detectAndCompute(gray2, None)
 
-        # Match the descriptors using brute-force matching
-        matches = bf.match(descriptors1, descriptors2)
+            # Initialize the feature matcher using brute-force matching
+            bf = cv2.BFMatcher()
 
-        # Select the top N matches
-        num_matches = 50
-        matches = sorted(matches, key=lambda x: x.distance)[:num_matches]
+            # Match the descriptors using brute-force matching
+            matches = bf.match(descriptors1, descriptors2)
 
-        # Extract matching keypoints
-        src_points = np.float32([keypoints1[match.queryIdx].pt for match in matches]).reshape(-1, 1, 2)
-        dst_points = np.float32([keypoints2[match.trainIdx].pt for match in matches]).reshape(-1, 1, 2)
+            # Select the top N matches
+            num_matches = 50
+            matches = sorted(matches, key=lambda x: x.distance)[:num_matches]
+
+            # Extract matching keypoints
+            src_points = np.float32([keypoints1[match.queryIdx].pt for match in matches]).reshape(-1, 1, 2)
+            dst_points = np.float32([keypoints2[match.trainIdx].pt for match in matches]).reshape(-1, 1, 2)
+        
+        elif model == 2 :
+            
+            device ='cuda' if torch.cuda.is_available() else 'cpu'
+
+            # Read images using cv2.imread
+            # image0 = cv2.imread('dataset/frames/frame_000000001.jpg')
+            # image1 = cv2.imread('dataset/frames/frame_000000011.jpg')
+            image0,inp0,_ = read_image(path = srcPath , device = device, resize = [640, 480] , rotation = 0, resize_float = False)
+            image1,inp1,_ = read_image(path = dstPath , device = device, resize = [640, 480], rotation = 0, resize_float = False)
+            
+            config = {
+                'superpoint': {
+                    'nms_radius': 4,
+                    'keypoint_threshold': 0.005,
+                    'max_keypoints': -1
+                },
+                'superglue': {
+                    'weights':'outdoor',
+                    'sinkhorn_iterations': 100,
+                    'match_threshold': 0.2,
+                    }
+                }
+            matching = Matching(config).eval().to(device)
+
+            pred = matching({'image0': inp0, 'image1': inp1})
+            pred = {k: v[0].detach().numpy() for k, v in pred.items()}
+            kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
+            matches, conf = pred['matches0'], pred['matching_scores0']
+            valid = matches > -1
+            src_points = kpts0[valid]
+            dst_points = kpts1[matches[valid]]
 
         return src_points, dst_points
 
