@@ -37,6 +37,7 @@ class Road2Sat:
         self.p_framesPath = os.path.join(self.genFolder, 'p_frames')
         self.road2SatHomographyFilename = "road2sat_homography.json"
         self.interframesHomographyFilename = "interframes_homography.json"
+        self.mosaicPath = os.path.join(self.genFolder, 'mosaic.jpg')
 
         # Create gen folder directories if they do not exist
         if os.path.exists(self.p_framesPath):
@@ -179,16 +180,18 @@ class Road2Sat:
             result = cv2.warpPerspective(img, h, (resultWidth, resultHeight))
             cv2.imwrite(os.path.join(self.p_framesPath, 'p_'+frameName), result)
         
+        self.createMosaic(self.p_framesPath)
         return self
 
-    def CreateMosaic(self):
-        print('Generating projections for images in', self.p_framesPath)
-        framePaths = glob.glob(os.path.join(self.p_framesPath, '*'))
-
-        mosaic = cv2.imread(p[-1])
-        for i in range(len(framePaths)-2,0,-1):
-            p = framePaths(i)
+    def createMosaic(self, srcImagesPath):
+        print('Generating mosaic for images in', srcImagesPath)
+        framePaths = glob.glob(os.path.join(srcImagesPath, '*'))
+        mosaic = np.zeros(cv2.imread(framePaths[0]).shape, cv2.imread(framePaths[0]).dtype)
+        for p in framePaths:
             img = cv2.imread(p)
+            mosaic[img>0] = img[img>0]
+        cv2.imwrite(self.mosaicPath, mosaic)
+        return self
 
 
 if __name__ == "__main__":
