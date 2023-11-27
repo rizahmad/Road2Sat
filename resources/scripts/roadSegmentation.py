@@ -23,6 +23,7 @@ import scipy.special
 import numpy as np
 import torchvision.transforms as transforms
 import PIL.Image as image
+import shutil
 
 # https://stackoverflow.com/questions/21259070/struggling-to-append-a-relative-path-to-my-sys-path
 # https://stackoverflow.com/questions/4934806/how-can-i-find-scripts-directory
@@ -163,9 +164,11 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
     
     source = '.\\dataset\\frames'
-    destination = '.\\dataset\\rs_frames'
-    if not os.path.exists(destination):
-        os.makedirs(destination)
 
-    createRoadSegmentedFrames(source, destination, model=1)
+    destinationPath = '.\\dataset\\rs_frames'
+    if os.path.exists(destinationPath):
+         shutil.rmtree(destinationPath)
+    os.makedirs(destinationPath)
+
+    createRoadSegmentedFrames(source, destinationPath, model=1)
 
