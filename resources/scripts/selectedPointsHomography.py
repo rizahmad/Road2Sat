@@ -6,6 +6,7 @@ import NumpyArrayEncoder
 from NumpyArrayEncoder import NumpyArrayEncoder
 import json
 import glob
+import imutils
 
 # Load the images
 
@@ -40,7 +41,7 @@ def selectedPointsHomography():
     satelliteImagePath = glob.glob(os.path.join(rootPath, 'satref', '*'))[0]
 
     roadImage = cv2.imread(roadImagePath)
-    satelliteImage = cv2.imread(satelliteImagePath)
+    satelliteImage = imutils.resize(cv2.imread(satelliteImagePath), roadImage.shape[1])
     
     point_reader(roadImage)
     roadPoints = np.array(pointsInput)
