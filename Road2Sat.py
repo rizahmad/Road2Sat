@@ -174,7 +174,9 @@ class Road2Sat:
             img = cv2.imread(p)
             frameName = frameName = p.split('\\')[-1]
             h = list(self.interframeHomography[i].values())[0]
-            result = cv2.warpPerspective(img, h, (img.shape[1], img.shape[0]))
+            resultWidth = 2*(img.shape[1])
+            resultHeight = 2*(img.shape[0])
+            result = cv2.warpPerspective(img, h, (resultWidth, resultHeight))
             cv2.imwrite(os.path.join(self.p_framesPath, 'p_'+frameName), result)
         
         return self
