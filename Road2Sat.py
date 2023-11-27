@@ -181,8 +181,15 @@ class Road2Sat:
         
         return self
 
-    def CreateMosaic():
-        pass
+    def CreateMosaic(self):
+        print('Generating projections for images in', self.p_framesPath)
+        framePaths = glob.glob(os.path.join(self.p_framesPath, '*'))
+
+        mosaic = cv2.imread(p[-1])
+        for i in range(len(framePaths)-2,0,-1):
+            p = framePaths(i)
+            img = cv2.imread(p)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
