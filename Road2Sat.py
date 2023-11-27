@@ -109,7 +109,7 @@ class Road2Sat:
 
         return src_points, dst_points
 
-    def CalculateInterFrameHomography(self):
+    def CalculateInterFrameHomography(self, model):
         f = open(os.path.join(self.genFolder, self.road2SatHomographyFilename), "r")
         encodedNumpyData =f.read()
         f.close()
@@ -146,7 +146,7 @@ class Road2Sat:
                 if i == 0:
                     interframeHomography.append({frameName:runningHomography})
                 else:
-                    srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1])
+                    srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1], model)
                     h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
                     runningHomography = np.matmul(runningHomography, h)
                     interframeHomography.append({frameName:runningHomography})
@@ -188,8 +188,9 @@ if __name__ == "__main__":
                     description='Creates a mosaic from dash cam images',
                     epilog='V1.0')
     parser.add_argument('-rs', '--roadsegmentation', action='store_true', required=False)
+    parser.add_argument('-m', '--model', required=True)
     args = vars(parser.parse_args())
 
     r2s = Road2Sat()
-    r2s.CalculateInterFrameHomography().CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
+    r2s.CalculateInterFrameHomography(int(args['model'])).CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
         
