@@ -159,8 +159,9 @@ def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, clos
             rsAlgo = yolopRoadSegmention
         for p in framePaths:
             segmentedImage = rsAlgo(p, int(openingIterations), int(closingIterations))
-            frameName = p.split('\\')[-1]
-            cv2.imwrite(os.path.join(rs_framesPath, 'rs_oi'+openingIterations+'_ci'+closingIterations+'_'+frameName), segmentedImage)
+            name = p.split('\\')[-1]
+            ext = p.split('\\')[-1].split('.')[-1]
+            cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
