@@ -110,7 +110,7 @@ class Road2Sat:
 
         return src_points, dst_points
 
-    def CalculateInterFrameHomography(self, model):
+    def CalculateInterFrameHomography(self, model, clean, verbose):
         f = open(os.path.join(self.genFolder, self.road2SatHomographyFilename), "r")
         encodedNumpyData =f.read()
         f.close()
@@ -122,6 +122,11 @@ class Road2Sat:
         interframeHomography = list()
         runningHomography = homography
         
+
+        if clean:
+            if os.path.exists(os.path.join(self.genFolder, self.interframesHomographyFilename)):
+                os.remove(os.path.join(self.genFolder, self.interframesHomographyFilename))
+
         if os.path.isfile(os.path.join(self.genFolder, self.interframesHomographyFilename)):
             # File exits, load it
             print(self.interframesHomographyFilename, 'was found, loading contents')
@@ -134,12 +139,10 @@ class Road2Sat:
             for h in homographyList:
                 k, v = list(h.items())[0]
                 interframeHomography.append({k:np.asarray(v)})
-            
         else:
-            # File does not exist, calculation needed
             # read all frames
             # loop over and get corresponding points and calculate homography
-            print(self.interframesHomographyFilename, 'was not found, calculating')
+            print(self.interframesHomographyFilename, 'shall be calculated')
             framePaths = glob.glob(os.path.join(self.framesPath, '*'))
             framePaths.sort()
             for i, _ in enumerate(framePaths):
@@ -147,9 +150,14 @@ class Road2Sat:
                 if i == 0:
                     interframeHomography.append({frameName:runningHomography})
                 else:
-                    srcPoints, dstPpoints = self.calculateCorrespondingPoints(framePaths[i], framePaths[i-1], model)
+                    sourceImage = framePaths[i]
+                    targetImage = framePaths[i-1]
+                    if verbose:
+                        print('Source image: {}', sourceImage)
+                        print('Target image: {}', targetImage)
+                    srcPoints, dstPpoints = self.calculateCorrespondingPoints(sourceImage, targetImage, model)
                     h, _ = cv2.findHomography(srcPoints, dstPpoints, cv2.RANSAC, 5.0)
-                    runningHomography = np.matmul(runningHomography, h)
+                    runningHomography = runningHomography @ h
                     interframeHomography.append({frameName:runningHomography})
 
             # Serialization and saving
@@ -201,8 +209,10 @@ if __name__ == "__main__":
                     epilog='V1.0')
     parser.add_argument('-rs', '--roadsegmentation', action='store_true', required=False)
     parser.add_argument('-m', '--model', required=True)
+    parser.add_argument('-c', '--clean', action='store_true', required=False)
+    parser.add_argument('-v', '--verbose', action='store_true', required=False)
     args = vars(parser.parse_args())
 
     r2s = Road2Sat()
-    r2s.CalculateInterFrameHomography(int(args['model'])).CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
+    r2s.CalculateInterFrameHomography(int(args['model']), args['clean'], args['verbose']).CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
         
