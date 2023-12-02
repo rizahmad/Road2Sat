@@ -110,7 +110,7 @@ class Road2Sat:
 
         return src_points, dst_points
 
-    def CalculateInterFrameHomography(self, model, clean, verbose):
+    def CalculateInterFrameHomography(self, model, roadSegmentation, clean, verbose):
         f = open(os.path.join(self.genFolder, self.road2SatHomographyFilename), "r")
         encodedNumpyData =f.read()
         f.close()
@@ -122,7 +122,12 @@ class Road2Sat:
         interframeHomography = list()
         runningHomography = homography
         
-
+        if roadSegmentation:
+            framePaths = glob.glob(os.path.join(self.rs_framesPath, '*'))
+        else:
+            framePaths = glob.glob(os.path.join(self.framesPath, '*'))
+        framePaths.sort()
+        
         if clean:
             if os.path.exists(os.path.join(self.genFolder, self.interframesHomographyFilename)):
                 os.remove(os.path.join(self.genFolder, self.interframesHomographyFilename))
@@ -143,8 +148,7 @@ class Road2Sat:
             # read all frames
             # loop over and get corresponding points and calculate homography
             print(self.interframesHomographyFilename, 'shall be calculated')
-            framePaths = glob.glob(os.path.join(self.framesPath, '*'))
-            framePaths.sort()
+
             for i, _ in enumerate(framePaths):
                 frameName = framePaths[i].split('\\')[-1]
                 if i == 0:
@@ -167,18 +171,12 @@ class Road2Sat:
             f.close()
 
         self.interframeHomography = interframeHomography
+        self.createProjectedFrames(framePaths)
 
         return self
         
-    def CreateProjectedFrames(self, roadSegmented=False):
-        srcImagesPath = ''
-        if roadSegmented:
-            srcImagesPath = self.rs_framesPath
-        else:
-            srcImagesPath = self.framesPath
-        
-        print('Generating projections for images in', srcImagesPath)
-        framePaths = glob.glob(os.path.join(srcImagesPath, '*'))
+    def createProjectedFrames(self, framePaths):
+        print('Creating frame projections')
         for i, p in enumerate(framePaths):
             img = cv2.imread(p)
             frameName = frameName = p.split('\\')[-1]
@@ -214,5 +212,8 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     r2s = Road2Sat()
-    r2s.CalculateInterFrameHomography(int(args['model']), args['clean'], args['verbose']).CreateProjectedFrames(roadSegmented=args['roadsegmentation'])
-        
+    r2s.CalculateInterFrameHomography(int(args['model']),
+                                      args['roadsegmentation'],
+                                      args['clean'],
+                                      args['verbose'])
+    

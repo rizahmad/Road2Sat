@@ -49,7 +49,7 @@ from glob import glob
 
 
 
-def yolopRoadSegmention(imagePath):
+def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     # @Faizan make any changes needed. You can download model weights in ../model/
     source = imagePath
     original_image =  cv2.imread(source)
@@ -139,21 +139,28 @@ def yolopRoadSegmention(imagePath):
     # Display the result
     color_mask = cv2.resize(color_mask, (original_image.shape[1], original_image.shape[0]))
 
+    k = np.array([[0,1,0], [1,1,1], [0,1,0]], dtype=np.uint8)
+    # remove the tiny artefacts
+    color_mask = cv2.erode(color_mask, k, iterations=openingIterations)
+    color_mask = cv2.dilate(color_mask, k, iterations=openingIterations)
+    # close gaps in road
+    color_mask = cv2.dilate(color_mask, k, iterations=closingIterations)
+    color_mask = cv2.erode(color_mask, k, iterations=closingIterations)
 
     result_image = original_image.copy()
     result_image[color_mask == 0] = 0
 
     return result_image
 
-def createRoadSegmentedFrames(framesPath, rs_framesPath, model=1):
+def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, closingIterations, model=1 ):
         framePaths = glob(os.path.join(framesPath, '*'))
         framePaths.sort()
         if model == 1:
             rsAlgo = yolopRoadSegmention
         for p in framePaths:
-            segmentedImage = rsAlgo(p)
+            segmentedImage = rsAlgo(p, int(openingIterations), int(closingIterations))
             frameName = p.split('\\')[-1]
-            cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+frameName), segmentedImage)
+            cv2.imwrite(os.path.join(rs_framesPath, 'rs_oi'+openingIterations+'_ci'+closingIterations+'_'+frameName), segmentedImage)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -161,6 +168,8 @@ if __name__ == "__main__":
                     description='Segment road from dash cam view',
                     epilog='V1.0')
     parser.add_argument('-m', '--model', help='Model selection', required = False)
+    parser.add_argument('-oi', '--opening_iterations', help='Opening iterations', required=True)
+    parser.add_argument('-ci', '--closing_iterations', help='Closing iterations', required=True)
     args = vars(parser.parse_args())
     
     source = '.\\dataset\\frames'
@@ -170,5 +179,9 @@ if __name__ == "__main__":
          shutil.rmtree(destinationPath)
     os.makedirs(destinationPath)
 
-    createRoadSegmentedFrames(source, destinationPath, model=1)
+    createRoadSegmentedFrames(source,
+                              destinationPath, 
+                              args['opening_iterations'], 
+                              args['closing_iterations'], 
+                              model=1)
 
