@@ -24,7 +24,7 @@ from models.utils import (compute_pose_error, compute_epipolar_error,
                           scale_intrinsics)
 
 class Road2Sat:
-    def __init__(self):
+    def __init__(self, model, roadSegmentation, clean, verbose):
         # Dataset files
         self.datasetFolder = '.\\dataset'
         self.framesPath = os.path.join(self.datasetFolder, 'frames')
@@ -44,7 +44,13 @@ class Road2Sat:
             shutil.rmtree(self.p_framesPath)
         os.makedirs(self.p_framesPath)
 
-    def calculateCorrespondingPoints(self, srcImagePath, dstImagePath, srcRoiPath, dstRoiPath , model = 2):
+        # Set configuration
+        self.model = int(model)
+        self.roadSegmentation = roadSegmentation
+        self.clean = clean
+        self.verbose = verbose
+
+    def calculateCorrespondingPoints(self, srcImagePath, dstImagePath, srcRoiPath, dstRoiPath):
         
         # Load the images
         image1 = cv2.imread(srcImagePath)
@@ -61,7 +67,7 @@ class Road2Sat:
         srcMask = cv2.cvtColor(srcRoi, cv2.COLOR_BGR2GRAY)
         dstMask = cv2.cvtColor(dstRoi, cv2.COLOR_BGR2GRAY)
 
-        if model == 1:
+        if self.model == 1:
 
             # Initialize the feature detector and extractor (e.g., SIFT)
             sift = cv2.SIFT_create()
@@ -84,7 +90,7 @@ class Road2Sat:
             src_points = np.float32([keypoints1[match.queryIdx].pt for match in matches]).reshape(-1, 1, 2)
             dst_points = np.float32([keypoints2[match.trainIdx].pt for match in matches]).reshape(-1, 1, 2)
         
-        elif model == 2 :
+        elif self.model == 2 :
             
             device ='cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -129,7 +135,7 @@ class Road2Sat:
             dst_points = np.array(roi_dst_points)
         return src_points, dst_points
 
-    def CalculateInterFrameHomography(self, model, road_segmentation, clean, verbose):
+    def CalculateInterFrameHomography(self):
         f = open(os.path.join(self.genFolder, self.road2SatHomographyFilename), "r")
         encodedNumpyData =f.read()
         f.close()
@@ -146,7 +152,7 @@ class Road2Sat:
         framePaths.sort()
         rsframePaths.sort()
         
-        if clean:
+        if self.clean:
             if os.path.exists(os.path.join(self.genFolder, self.interframesHomographyFilename)):
                 os.remove(os.path.join(self.genFolder, self.interframesHomographyFilename))
 
@@ -176,7 +182,7 @@ class Road2Sat:
                     targetImagePath = framePaths[i-1]
                     srcRoiPath = rsframePaths[i]
                     dstRoiPath = rsframePaths[i-1]
-                    if verbose:
+                    if self.verbose:
                         print('Source image: {}', sourceImagePath)
                         print('Target image: {}', targetImagePath)
                         print('Source ROI image: {}', srcRoiPath)
@@ -194,13 +200,13 @@ class Road2Sat:
 
         self.interframeHomography = interframeHomography
 
-        self.createProjectedFrames(framePaths, rsframePaths, road_segmentation)
+        self.createProjectedFrames(framePaths, rsframePaths)
 
         return self
         
-    def createProjectedFrames(self, framePaths, rsframePaths, road_segmentation):
+    def createProjectedFrames(self, framePaths, rsframePaths):
         print('Creating frame projections')
-        if road_segmentation:
+        if self.roadSegmentation:
             paths = rsframePaths
         else:
             paths = framePaths[0:len(rsframePaths)]
@@ -213,16 +219,29 @@ class Road2Sat:
             result = cv2.warpPerspective(img, h, (resultWidth, resultHeight))
             cv2.imwrite(os.path.join(self.p_framesPath, 'p_'+frameName), result)
         
-       # self.createMosaic(self.p_framesPath)
+        self.createMosaic(self.p_framesPath)
         return self
 
     def createMosaic(self, srcImagesPath):
         print('Generating mosaic for images in', srcImagesPath)
         framePaths = glob.glob(os.path.join(srcImagesPath, '*'))
-        mosaic = np.zeros(cv2.imread(framePaths[0]).shape, cv2.imread(framePaths[0]).dtype)
-        for p in framePaths:
-            img = cv2.imread(p)
-            mosaic[img>0] = img[img>0]
+        mosaic = cv2.imread(framePaths[0])
+        for i, p in enumerate(framePaths[1:-1]):
+            gray1 = cv2.cvtColor(mosaic, cv2.COLOR_BGR2GRAY)
+            img2 = cv2.imread(framePaths[i+1])
+            gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) 
+            mask1 = cv2.threshold(gray1, 0, 255,
+	                            cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+            mask2 = cv2.threshold(gray2, 0, 255,
+	                            cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+            mask = mask2-mask1
+            mosaic[mask>5] = img2[mask>5]
+            if self.verbose:
+                cv2.imshow('Mosaic',mosaic)
+                #cv2.imshow('mask', mask)
+                cv2.waitKey()
+            
+           # mosaic = cv2.addWeighted(img1, 1,img2, 1, 0)
         cv2.imwrite(self.mosaicPath, mosaic)
         return self
 
@@ -238,9 +257,9 @@ if __name__ == "__main__":
     parser.add_argument('-rs', '--road_segmentation', action='store_true', required=False)
     args = vars(parser.parse_args())
 
-    r2s = Road2Sat()
-    r2s.CalculateInterFrameHomography(int(args['model']),
-                                      args['road_segmentation'],
-                                      args['clean'],
-                                      args['verbose'])
+    r2s = Road2Sat(int(args['model']),
+                        args['road_segmentation'],
+                        args['clean'],
+                        args['verbose'])
+    r2s.CalculateInterFrameHomography()
     
