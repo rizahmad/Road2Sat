@@ -24,6 +24,8 @@ import numpy as np
 import torchvision.transforms as transforms
 import PIL.Image as image
 import shutil
+import json
+from NumpyArrayEncoder import NumpyArrayEncoder
 
 # https://stackoverflow.com/questions/21259070/struggling-to-append-a-relative-path-to-my-sys-path
 # https://stackoverflow.com/questions/4934806/how-can-i-find-scripts-directory
@@ -38,6 +40,8 @@ from lib.core.general import non_max_suppression, scale_coords
 from lib.utils import plot_one_box,show_seg_result
 from lib.core.function import AverageMeter
 from lib.core.postprocess import morphological_process, connect_lane
+from lib.core.general import non_max_suppression
+
 
 import torch
 from torchvision import transforms
@@ -47,11 +51,37 @@ from glob import glob
 
 # import evaluate
 
+def resize_unscale(img, new_shape=(640, 640), color=114):
+    shape = img.shape[:2]  # current shape [height, width]
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
 
+    canvas = np.zeros((new_shape[0], new_shape[1], 3))
+    canvas.fill(color)
+    # Scale ratio (new / old) new_shape(h,w)
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+
+    # Compute padding
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))  # w,h
+    new_unpad_w = new_unpad[0]
+    new_unpad_h = new_unpad[1]
+    pad_w, pad_h = new_shape[1] - new_unpad_w, new_shape[0] - new_unpad_h  # wh padding
+
+    dw = pad_w // 2  # divide padding into 2 sides
+    dh = pad_h // 2
+
+    if shape[::-1] != new_unpad:  # resize
+        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_AREA)
+
+    canvas[dh:dh + new_unpad_h, dw:dw + new_unpad_w, :] = img
+
+    return canvas, r, dw, dh, new_unpad_w, new_unpad_h  # (dw,dh)
 
 def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     # @Faizan make any changes needed. You can download model weights in ../model/
+    
     source = imagePath
+    print('the source ', source)
     original_image =  cv2.imread(source)
     
     logger, _, _ = create_logger(
@@ -92,6 +122,65 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
 
     # Run the model
     det_out, da_seg_out, ll_seg_out = model(img)
+    
+    #bounding box detection and saving
+    img_bgr =  original_image.copy()
+    # height, width, _ = img_bgr.shape
+
+    # convert to RGB
+    img_rgb = img_bgr[:, :, ::-1].copy()
+    canvas, r, dw, dh, new_unpad_w, new_unpad_h = resize_unscale(img_rgb, (640, 640))
+    print('main values', r, dw, dh)
+
+    
+    # output_json = r".\\dataset\\rs_frames\\objects.json"
+    confidence_threshold=0.75
+    
+    boxes = non_max_suppression(det_out[0], conf_thres=confidence_threshold)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
+    boxes = boxes.detach().numpy().astype(np.float32)
+
+    if boxes.shape[0] == 0:
+        print(f"No bounding boxes detected above {confidence_threshold} confidence.")
+        return
+
+    # scale coords to original size.
+    boxes[:, 0] -= dw
+    boxes[:, 1] -= dh
+    boxes[:, 2] -= dw
+    boxes[:, 3] -= dh
+    boxes[:, :4] /= r
+
+    print(f"Detect {boxes.shape[0]} bounding boxes above {confidence_threshold} confidence.")
+
+    bounding_boxes = []
+    base_name = os.path.basename(imagePath)
+
+    # Extract letters after the last backslash
+    required_image_path = base_name.split('\\')[-1]
+    print()
+    bounding_boxes.append(required_image_path)
+    for i in range(boxes.shape[0]):
+        x1, y1, x2, y2, conf, label = boxes[i]
+        if x2 == 0:
+            x2 = -1 
+            y_result =  -1
+        else:
+            y_result = y2 - y1
+        bounding_box = {
+            'x': int(x2),
+            'y': int(y_result),
+
+            'confidence': float(conf),
+            'label': int(label)
+        }
+        bounding_boxes.append(bounding_box)
+
+    # Save bounding boxes to a JSON file
+    path_to_save  = '.\\dataset\\rs_frames'
+    encodedNumpyData = json.dumps(bounding_boxes, indent=4)
+    f = open(os.path.join(path_to_save, "objects.json"), "w")
+    f.write(encodedNumpyData)
+    f.close()
 
     # Process the segmentation outputs
     inf_out, _ , _ = det_out
@@ -161,7 +250,7 @@ def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, clos
             segmentedImage = rsAlgo(p, int(openingIterations), int(closingIterations))
             name = p.split('\\')[-1]
             ext = p.split('\\')[-1].split('.')[-1]
-            cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
+            # cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
