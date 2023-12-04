@@ -31,6 +31,8 @@ class Road2Sat:
         self.roadrefPath = os.path.join(self.datasetFolder, 'roadref')
         self.satrefPath = os.path.join(self.datasetFolder, 'satref')
         self.rs_framesPath = os.path.join(self.datasetFolder, 'rs_frames')
+        self.objectsFilename = "objects.json"
+        self.objectsFilePath = os.path.join(self.rs_framesPath, self.objectsFilename)
         
         # Generated files
         self.genFolder = '.\\gen'
@@ -38,6 +40,7 @@ class Road2Sat:
         self.road2SatHomographyFilename = "road2sat_homography.json"
         self.interframesHomographyFilename = "interframes_homography.json"
         self.mosaicPath = os.path.join(self.genFolder, 'mosaic.jpg')
+        self.transformedObjectsFilename = "projectedObjects.json"
 
         # Create gen folder directories if they do not exist
         if os.path.exists(self.p_framesPath):
@@ -147,8 +150,8 @@ class Road2Sat:
         interframeHomography = list()
         runningHomography = homography
         
-        rsframePaths = glob.glob(os.path.join(self.rs_framesPath, '*'))
-        framePaths = glob.glob(os.path.join(self.framesPath, '*'))
+        rsframePaths = glob.glob(os.path.join(self.rs_framesPath, '*.jpg'))
+        framePaths = glob.glob(os.path.join(self.framesPath, '*.jpg'))
         framePaths.sort()
         rsframePaths.sort()
         
@@ -206,19 +209,56 @@ class Road2Sat:
         
     def createProjectedFrames(self, framePaths, rsframePaths):
         print('Creating frame projections')
+        objectsList = list()
+        transformedObjectsLists = list()
+        paths = None
+
+        if os.path.exists(os.path.join(self.genFolder, self.transformedObjectsFilename)):
+            os.remove(os.path.join(self.genFolder, self.transformedObjectsFilename))
+
         if self.roadSegmentation:
             paths = rsframePaths
+            f = open(self.objectsFilePath, "r")
+            encodedObjectsData =f.read()
+            f.close()
+            decodedObjectsData = json.loads(encodedObjectsData)
+            for i in decodedObjectsData:
+                frameId, obj = list(i.items())[0]
+                location = [int(obj['x']), int(obj['y'])]
+                label = obj['label']
+                confidence = obj['confidence']
+                objectsList.append({frameId:[location, label, confidence]})
         else:
             paths = framePaths[0:len(rsframePaths)]
-        for i, p in enumerate(paths):
-            img = cv2.imread(p)
-            frameName = frameName = p.split('\\')[-1]
+        for i, p in enumerate(paths[0:3]):
+            # get the transformation
             h = list(self.interframeHomography[i].values())[0]
+            frameName = frameName = p.split('\\')[-1]
+
+            # transform the object locations
+            point =list(objectsList[i].values())[0][0]
+            point.extend([1])
+            if point[0] != -1:
+                transformedLocation = h@np.array(point)
+                transformedLocation = (transformedLocation/transformedLocation[2]).astype('uint32')
+            else:
+                transformedLocation = point
+            transformedObjectsLists.append({frameName:[transformedLocation, list(objectsList[i].values())[0][1], list(objectsList[i].values())[0][2]]})
+
+            # transform images
+            img = cv2.imread(p)
             resultWidth = 2*(img.shape[1])
             resultHeight = 2*(img.shape[0])
             result = cv2.warpPerspective(img, h, (resultWidth, resultHeight))
+            cv2.circle(result, (transformedLocation[0], transformedLocation[1]), 5, (0, 0, 255), -1)
             cv2.imwrite(os.path.join(self.p_framesPath, 'p_'+frameName), result)
-        
+
+        # put transformed files into a json file
+        encodedtransformedObjectsLists = json.dumps(transformedObjectsLists, cls=NumpyArrayEncoder, indent=4)
+        f = open(os.path.join(self.genFolder, self.transformedObjectsFilename), "w")
+        f.write(encodedtransformedObjectsLists)
+        f.close()
+
         self.createMosaic(self.p_framesPath)
         return self
 
