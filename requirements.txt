@@ -17,3 +17,4 @@ prefetch_generator
 scikit-learn
 torchvision
 IPython
+onnxruntime
