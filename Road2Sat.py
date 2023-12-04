@@ -230,7 +230,7 @@ class Road2Sat:
                 objectsList.append({frameId:[location, label, confidence]})
         else:
             paths = framePaths[0:len(rsframePaths)]
-        for i, p in enumerate(paths[0:3]):
+        for i, p in enumerate(paths):
             # get the transformation
             h = list(self.interframeHomography[i].values())[0]
             frameName = frameName = p.split('\\')[-1]

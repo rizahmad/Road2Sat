@@ -77,11 +77,38 @@ def resize_unscale(img, new_shape=(640, 640), color=114):
 
     return canvas, r, dw, dh, new_unpad_w, new_unpad_h  # (dw,dh)
 
-def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
-    # @Faizan make any changes needed. You can download model weights in ../model/
+def getObjects(imagePath, original_image, det_out):
+    img_bgr =  original_image.copy()
+
+    # convert to RGB
+    img_rgb = img_bgr[:, :, ::-1].copy()
+    canvas, r, dw, dh, new_unpad_w, new_unpad_h = resize_unscale(img_rgb, (640, 640))
+    confidence_threshold=0.25
     
+    boxes = non_max_suppression(det_out[0], conf_thres=confidence_threshold)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
+    boxes = boxes.detach().numpy().astype(np.float32)
+
+    frameName = imagePath.split('\\')[-1]
+    object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
+
+    if boxes.shape[0] != 0:
+        # scale coords to original size.
+        boxes[:, 0] -= dw
+        boxes[:, 1] -= dh
+        boxes[:, 2] -= dw
+        boxes[:, 3] -= dh
+        boxes[:, :4] /= r
+        x1, y1, x2, y2, conf, label = boxes[0]
+        object[frameName]['x'] = int(min(x1, x2))
+        object[frameName]['y'] = int(abs(y2-y1))
+        object[frameName]['confidence'] = int(conf)
+        object[frameName]['label'] = int(label)
+
+    print(object)
+    return object
+
+def yolopRoadSegmention(imagePath, openingIterations, closingIterations):   
     source = imagePath
-    print('the source ', source)
     original_image =  cv2.imread(source)
     
     logger, _, _ = create_logger(
@@ -96,8 +123,6 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
                 transforms.ToTensor(),
                 normalize,
             ])
-
-
 
     model = get_net(cfg)
     checkpoint = torch.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),'..\models', 'YOLOP', 'weights', 'End-to-end.pth'), map_location= device)
@@ -122,65 +147,6 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
 
     # Run the model
     det_out, da_seg_out, ll_seg_out = model(img)
-    
-    #bounding box detection and saving
-    img_bgr =  original_image.copy()
-    # height, width, _ = img_bgr.shape
-
-    # convert to RGB
-    img_rgb = img_bgr[:, :, ::-1].copy()
-    canvas, r, dw, dh, new_unpad_w, new_unpad_h = resize_unscale(img_rgb, (640, 640))
-    print('main values', r, dw, dh)
-
-    
-    # output_json = r".\\dataset\\rs_frames\\objects.json"
-    confidence_threshold=0.75
-    
-    boxes = non_max_suppression(det_out[0], conf_thres=confidence_threshold)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
-    boxes = boxes.detach().numpy().astype(np.float32)
-
-    if boxes.shape[0] == 0:
-        print(f"No bounding boxes detected above {confidence_threshold} confidence.")
-        return
-
-    # scale coords to original size.
-    boxes[:, 0] -= dw
-    boxes[:, 1] -= dh
-    boxes[:, 2] -= dw
-    boxes[:, 3] -= dh
-    boxes[:, :4] /= r
-
-    print(f"Detect {boxes.shape[0]} bounding boxes above {confidence_threshold} confidence.")
-
-    bounding_boxes = []
-    base_name = os.path.basename(imagePath)
-
-    # Extract letters after the last backslash
-    required_image_path = base_name.split('\\')[-1]
-    print()
-    bounding_boxes.append(required_image_path)
-    for i in range(boxes.shape[0]):
-        x1, y1, x2, y2, conf, label = boxes[i]
-        if x2 == 0:
-            x2 = -1 
-            y_result =  -1
-        else:
-            y_result = y2 - y1
-        bounding_box = {
-            'x': int(x2),
-            'y': int(y_result),
-
-            'confidence': float(conf),
-            'label': int(label)
-        }
-        bounding_boxes.append(bounding_box)
-
-    # Save bounding boxes to a JSON file
-    path_to_save  = '.\\dataset\\rs_frames'
-    encodedNumpyData = json.dumps(bounding_boxes, indent=4)
-    f = open(os.path.join(path_to_save, "objects.json"), "w")
-    f.write(encodedNumpyData)
-    f.close()
 
     # Process the segmentation outputs
     inf_out, _ , _ = det_out
@@ -239,19 +205,28 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     result_image = original_image.copy()
     result_image[color_mask == 0] = 0
 
-    return result_image
+    object = getObjects(imagePath, original_image, det_out)
+    return result_image, object
 
 def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, closingIterations, model=1 ):
-        framePaths = glob(os.path.join(framesPath, '*'))
-        framePaths.sort()
-        if model == 1:
-            rsAlgo = yolopRoadSegmention
-        for p in framePaths:
-            segmentedImage = rsAlgo(p, int(openingIterations), int(closingIterations))
-            name = p.split('\\')[-1]
-            ext = p.split('\\')[-1].split('.')[-1]
-            # cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
-
+    framePaths = glob(os.path.join(framesPath, '*'))
+    framePaths.sort()
+    objectsList = list()
+    if model == 1:
+        rsAlgo = yolopRoadSegmention
+    for p in framePaths:
+        segmentedImage, object = rsAlgo(p, int(openingIterations), int(closingIterations))
+        name = p.split('\\')[-1]
+        ext = p.split('\\')[-1].split('.')[-1]
+        cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
+        objectsList.append(object)
+    
+    # Save bounding boxes to a JSON file
+    path_to_save  = '.\\dataset\\rs_frames'
+    encodedNumpyData = json.dumps(objectsList, cls=NumpyArrayEncoder ,indent=4)
+    f = open(os.path.join(path_to_save, "objects.json"), "w")
+    f.write(encodedNumpyData)
+    f.close()
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
                     prog='roadSegmentation',
