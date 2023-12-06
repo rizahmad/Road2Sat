@@ -50,6 +50,8 @@ from PIL import Image
 from glob import glob
 
 # import evaluate
+def calculate_distance(x1, y1, x2, y2):
+    return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
 def resize_unscale(img, new_shape=(640, 640), color=114):
     shape = img.shape[:2]  # current shape [height, width]
@@ -79,17 +81,19 @@ def resize_unscale(img, new_shape=(640, 640), color=114):
 
 def getObjects(imagePath, original_image, det_out):
     img_bgr =  original_image.copy()
+    height, width, _ = img_bgr.shape
+
 
     # convert to RGB
     img_rgb = img_bgr[:, :, ::-1].copy()
     canvas, r, dw, dh, new_unpad_w, new_unpad_h = resize_unscale(img_rgb, (640, 640))
-    confidence_threshold=0.25
+    confidence_threshold=0.75
     
     boxes = non_max_suppression(det_out[0], conf_thres=confidence_threshold)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
     boxes = boxes.detach().numpy().astype(np.float32)
 
     frameName = imagePath.split('\\')[-1]
-    object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
+    
 
     if boxes.shape[0] != 0:
         # scale coords to original size.
@@ -98,13 +102,41 @@ def getObjects(imagePath, original_image, det_out):
         boxes[:, 2] -= dw
         boxes[:, 3] -= dh
         boxes[:, :4] /= r
-        x1, y1, x2, y2, conf, label = boxes[0]
+
+
+        
+    center_x = width / 2
+    center_y = height / 2
+
+    best_box = None
+    best_distance = float('inf')
+
+    best_confidence = None  # Variable to store the confidence of the best box
+
+    for i in range(boxes.shape[0]):
+        x1, y1, x2, y2, conf, label = boxes[i]
+        x1, y1, x2, y2, label = int(x1), int(y1), int(x2), int(y2), int(label)
+
+        box_center_x = (x1 + x2) / 2
+        box_center_y = (y1 + y2) / 2
+
+        distance = calculate_distance(center_x, center_y, box_center_x, box_center_y)
+
+        # Check if a box is detected and if it has higher confidence
+        if best_confidence is None or (conf is not None and conf > best_confidence):
+            best_box = boxes[i]
+            best_confidence = conf
+            best_distance = distance
+
+    if best_box is not None:
+        x1, y1, x2, y2, conf, label = best_box
         object[frameName]['x'] = int(min(x1, x2))
         object[frameName]['y'] = int(abs(y2-y1))
         object[frameName]['confidence'] = int(conf)
         object[frameName]['label'] = int(label)
+    else:
+        object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
 
-    print(object)
     return object
 
 def yolopRoadSegmention(imagePath, openingIterations, closingIterations):   
