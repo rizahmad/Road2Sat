@@ -128,14 +128,13 @@ def getObjects(imagePath, original_image, det_out):
             best_confidence = conf
             best_distance = distance
 
+    object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
     if best_box is not None:
         x1, y1, x2, y2, conf, label = best_box
-        object[frameName]['x'] = int(min(x1, x2))
-        object[frameName]['y'] = int(abs(y2-y1))
+        object[frameName]['x'] = int(x1)
+        object[frameName]['y'] = int(y1)
         object[frameName]['confidence'] = int(conf)
         object[frameName]['label'] = int(label)
-    else:
-        object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
 
     return object
 
@@ -143,9 +142,8 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     source = imagePath
     original_image =  cv2.imread(source)
     
-    logger, _, _ = create_logger(
-        cfg, cfg.LOG_DIR, 'demo')
-    device = select_device(logger,'cpu')
+
+    device = torch.device('cpu')
     normalize = transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
@@ -160,9 +158,6 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     checkpoint = torch.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),'..\models', 'YOLOP', 'weights', 'End-to-end.pth'), map_location= device)
     model.load_state_dict(checkpoint['state_dict'])
     model = model.to(device)
-    if half:
-        model.half()  # to FP16
-
 
     dataset = LoadImages(source, img_size=640)
 
@@ -240,17 +235,22 @@ def yolopRoadSegmention(imagePath, openingIterations, closingIterations):
     object = getObjects(imagePath, original_image, det_out)
     return result_image, object
 
-def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, closingIterations, model=1 ):
+def createRoadSegmentedFrames(framesPath, rs_framesPath, openingIterations, closingIterations, nframes):
     framePaths = glob(os.path.join(framesPath, '*'))
     framePaths.sort()
     objectsList = list()
-    if model == 1:
-        rsAlgo = yolopRoadSegmention
-    for p in framePaths:
+    rsAlgo = yolopRoadSegmention
+
+    nMax = 1000000
+    if nframes != None:
+        nMax = int(nframes)
+    if len(framePaths) < nMax:
+        nMax = len(framePaths)
+    for p in framePaths[0:nMax]:
         segmentedImage, object = rsAlgo(p, int(openingIterations), int(closingIterations))
-        name = p.split('\\')[-1]
+        name = p.split('\\')[-1].split('.')[0]
         ext = p.split('\\')[-1].split('.')[-1]
-        cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
+        cv2.imwrite(os.path.join(rs_framesPath, 'rs_'+name+'_oi_{}_ci_{}'.format(openingIterations,closingIterations)+'.{}'.format(ext)), segmentedImage)
         objectsList.append(object)
     
     # Save bounding boxes to a JSON file
@@ -264,9 +264,9 @@ if __name__ == "__main__":
                     prog='roadSegmentation',
                     description='Segment road from dash cam view',
                     epilog='V1.0')
-    parser.add_argument('-m', '--model', help='Model selection', required = False)
     parser.add_argument('-oi', '--opening_iterations', help='Opening iterations', required=True)
     parser.add_argument('-ci', '--closing_iterations', help='Closing iterations', required=True)
+    parser.add_argument('-n', '--nframes', help='number of frames', required=False)
     args = vars(parser.parse_args())
     
     source = '.\\dataset\\frames'
@@ -279,6 +279,6 @@ if __name__ == "__main__":
     createRoadSegmentedFrames(source,
                               destinationPath, 
                               args['opening_iterations'], 
-                              args['closing_iterations'], 
-                              model=1)
+                              args['closing_iterations'],
+                              args['nframes'])
 
