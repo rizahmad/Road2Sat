@@ -13,6 +13,8 @@ from IPython.display import clear_output
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import sys
+import onnxruntime as ort
+
 
 # from transformers import AutoProcessor, CLIPSegForImageSegmentation
 import torchvision
@@ -79,32 +81,62 @@ def resize_unscale(img, new_shape=(640, 640), color=114):
 
     return canvas, r, dw, dh, new_unpad_w, new_unpad_h  # (dw,dh)
 
+import cv2
+import numpy as np
+
 def getObjects(imagePath, original_image, det_out):
-    img_bgr =  original_image.copy()
+    img_bgr = original_image.copy()
     height, width, _ = img_bgr.shape
 
+    ort.set_default_logger_severity(4)
+    weight="yolop-640-640.onnx"
+    onnx_path = f"./resources/models/YOLOP/weights/{weight}"
+    ort_session = ort.InferenceSession(onnx_path)
+
+
+    img_bgr = cv2.imread(imagePath)
+    height, width, _ = img_bgr.shape
 
     # convert to RGB
     img_rgb = img_bgr[:, :, ::-1].copy()
+
+    # resize & normalize
     canvas, r, dw, dh, new_unpad_w, new_unpad_h = resize_unscale(img_rgb, (640, 640))
-    confidence_threshold=0.75
-    
-    boxes = non_max_suppression(det_out[0], conf_thres=confidence_threshold)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
-    boxes = boxes.detach().numpy().astype(np.float32)
 
-    frameName = imagePath.split('\\')[-1]
-    
+    img = canvas.copy().astype(np.float32)  # (3,640,640) RGB
+    img /= 255.0
+    img[:, :, 0] -= 0.485
+    img[:, :, 1] -= 0.456
+    img[:, :, 2] -= 0.406
+    img[:, :, 0] /= 0.229
+    img[:, :, 1] /= 0.224
+    img[:, :, 2] /= 0.225
 
-    if boxes.shape[0] != 0:
-        # scale coords to original size.
-        boxes[:, 0] -= dw
-        boxes[:, 1] -= dh
-        boxes[:, 2] -= dw
-        boxes[:, 3] -= dh
-        boxes[:, :4] /= r
+    img = img.transpose(2, 0, 1)
 
+    img = np.expand_dims(img, 0)  # (1, 3,640,640)
 
-        
+    # inference: (1,n,6) (1,2,640,640) (1,2,640,640)
+    det_out = ort_session.run(['det_out'], input_feed={"images": img})[0]
+
+    det_out = torch.from_numpy(det_out).float()
+    boxes = non_max_suppression(det_out, conf_thres=0.75)[0]  # [n,6] [x1,y1,x2,y2,conf,cls]
+    boxes = boxes.cpu().numpy().astype(np.float32)
+
+    if boxes.shape[0] == 0:
+        print(f"No bounding boxes detected above 0.75 confidence.")
+        return
+
+    # scale coords to original size.
+    boxes[:, 0] -= dw
+    boxes[:, 1] -= dh
+    boxes[:, 2] -= dw
+    boxes[:, 3] -= dh
+    boxes[:, :4] /= r
+
+    # print(f"Detect {boxes.shape[0]} bounding boxes above 0.75 confidence.")
+
+    # Calculate the center pixel
     center_x = width / 2
     center_y = height / 2
 
@@ -112,7 +144,9 @@ def getObjects(imagePath, original_image, det_out):
     best_distance = float('inf')
 
     best_confidence = None  # Variable to store the confidence of the best box
-
+    frameName = imagePath.split('\\')[-1]
+    
+    
     for i in range(boxes.shape[0]):
         x1, y1, x2, y2, conf, label = boxes[i]
         x1, y1, x2, y2, label = int(x1), int(y1), int(x2), int(y2), int(label)
@@ -128,15 +162,23 @@ def getObjects(imagePath, original_image, det_out):
             best_confidence = conf
             best_distance = distance
 
-    object = {frameName:{'x':-1, 'y':-1,'confidence':0, 'label':0}}
+    object_info = {frameName: {'x': -1, 'y': -1, 'confidence': 0, 'label': 0}}
+
     if best_box is not None:
         x1, y1, x2, y2, conf, label = best_box
-        object[frameName]['x'] = int(x1)
-        object[frameName]['y'] = int(y1)
-        object[frameName]['confidence'] = int(conf)
-        object[frameName]['label'] = int(label)
+        x1, y1, x2, y2, label = int(x1), int(y1), int(x2), int(y2), int(label)
+        img_det = img_rgb[:, :, ::-1].copy()
+        base_center_x = (x1 + x2) // 2
+        base_center_y = y2
+        cv2.circle(img_det, (base_center_x, base_center_y), 5, (255, 0, 0), -1)
 
-    return object
+        object_info[frameName]['x'] = base_center_x
+        object_info[frameName]['y'] = base_center_y
+        object_info[frameName]['confidence'] = int(conf)
+        object_info[frameName]['label'] = int(label)
+    
+    return object_info
+
 
 def yolopRoadSegmention(imagePath, openingIterations, closingIterations):   
     source = imagePath
