@@ -105,7 +105,9 @@ class Road2Sat:
         
         elif self.model == 2 :
             
-            device ='cuda' if torch.cuda.is_available() else 'cpu'
+            device = 'cpu'
+            if torch.cuda.is_available():
+                device = 'cuda'
 
             # Read images using cv2.imread
             # image0 = cv2.imread('dataset/frames/frame_000000001.jpg')
@@ -128,7 +130,7 @@ class Road2Sat:
             matching = Matching(config).eval().to(device)
 
             pred = matching({'image0': inp0, 'image1': inp1})
-            pred = {k: v[0].detach().numpy() for k, v in pred.items()}
+            pred = {k: v[0].detach().cpu().numpy() for k, v in pred.items()}
             kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
             matches, conf = pred['matches0'], pred['matching_scores0']
             valid = matches > -1
@@ -140,7 +142,6 @@ class Road2Sat:
             roi_dst_points = []
             for i, p in enumerate(s_points):
                 x, y = int(p[0]), int(p[1])
-                print(srcMask.shape)
                 if srcMask[y, x] != 0:
                     roi_src_points.append([[x, y]])
                     roi_dst_points.append([[int(d_points[i][0]), int(d_points[i][1])]])
@@ -311,14 +312,13 @@ class Road2Sat:
         mosaic = cv2.imread(framePaths[0])
         for i, p in tqdm(enumerate(framePaths[1:])):
             gray1 = cv2.cvtColor(mosaic, cv2.COLOR_BGR2GRAY)
-            img2 = cv2.imread(framePaths[i+1])
+            img2 = cv2.imread(framePaths[i])
             gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) 
             mask1 = cv2.threshold(gray1, 0, 255,
 	                            cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
             mask2 = cv2.threshold(gray2, 0, 255,
 	                            cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-            mask = mask2-mask1
-            mosaic[mask>5] = img2[mask>5]
+            mosaic[mask2>5] = img2[mask2>5]
             if self.verbose:
                 cv2.imshow('Mosaic',mosaic)
                 cv2.waitKey()
